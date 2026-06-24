@@ -49,42 +49,74 @@ def simplifier_texte(texte):
     texte = re.sub(r'\s+', ' ', texte).strip()
     return texte
 
+def formater_nom_affichage(nom):
+    if nom == "--- Sélectionner un coureur ---":
+        return nom
+    mots = str(nom).split()
+    if len(mots) > 1:
+        nom_fam = " ".join(mots[:-1]).upper()
+        prenom = mots[-1].capitalize()
+        return f"{nom_fam} {prenom}"
+    return str(nom).upper()
+
+# NOUVEAU : Comparateur ultra-robuste de coureurs (gère les inversions Nom/Prénom)
+def sont_le_meme_coureur(nom1, nom2):
+    n1 = set(simplifier_texte(nom1).split())
+    n2 = set(simplifier_texte(nom2).split())
+    if not n1 or not n2: return False
+    if n1 == n2: return True
+    if len(n1.intersection(n2)) >= 2: return True
+    return False
+
+# NOUVEAU : Récupérateur de cote intelligent
+def obtenir_cote(coureur, cotes_du_jour):
+    if coureur in cotes_du_jour:
+        return cotes_du_jour[coureur]
+    for c_cote, v_cote in cotes_du_jour.items():
+        if sont_le_meme_coureur(c_cote, coureur):
+            return v_cote
+    return 0.0
+
 def trouver_vrai_nom(nom_brut, liste_coureurs):
-    nom_sim = simplifier_texte(nom_brut)
+    nom_nettoye = re.sub(r'^\d+[\text\.\-\s]+', '', str(nom_brut)).strip()
+    nom_sim = simplifier_texte(nom_nettoye)
+    
     if not nom_sim: return nom_brut
     
-    for c in liste_coureurs:
-        if c == "--- Sélectionner un coureur ---": continue
-        if simplifier_texte(c) == nom_sim:
-            return c
+    noms_simplifies = {simplifier_texte(c): c for c in liste_coureurs if c != "--- Sélectionner un coureur ---"}
+    
+    if nom_sim in noms_simplifies:
+        return noms_simplifies[nom_sim]
+        
+    mots = nom_sim.split()
+    if len(mots) == 2:
+        nom_inv = f"{mots[1]} {mots[0]}"
+        if nom_inv in noms_simplifies:
+            return noms_simplifies[nom_inv]
             
-    mots_brut = set(nom_sim.split())
+    mots_brut = set(mots)
     meilleur_match = nom_brut
     meilleur_score = 0
     
-    for c in liste_coureurs:
-        if c == "--- Sélectionner un coureur ---": continue
-        c_sim = simplifier_texte(c)
+    for c_sim, c_reel in noms_simplifies.items():
         mots_c = set(c_sim.split())
         score = len(mots_brut.intersection(mots_c))
         if score >= 2 and score > meilleur_score:
             meilleur_score = score
-            meilleur_match = c
+            meilleur_match = c_reel
             
     if meilleur_score >= 2:
         return meilleur_match
         
-    noms_simplifies = {simplifier_texte(c): c for c in liste_coureurs if c != "--- Sélectionner un coureur ---"}
     matches = difflib.get_close_matches(nom_sim, noms_simplifies.keys(), n=1, cutoff=0.6)
     if matches:
         return noms_simplifies[matches[0]]
         
-    mot_le_plus_long = max(mots_brut, key=len)
-    if len(mot_le_plus_long) >= 4:
-        for c in liste_coureurs:
-            if c == "--- Sélectionner un coureur ---": continue
-            if mot_le_plus_long in simplifier_texte(c):
-                return c
+    mot_le_plus_long = max(mots_brut, key=len) if mots_brut else ""
+    if len(mot_le_plus_long) >= 5:
+        for c_sim, c_reel in noms_simplifies.items():
+            if mot_le_plus_long in c_sim:
+                return c_reel
 
     return nom_brut
 
@@ -133,77 +165,138 @@ def espace_admin():
     # --- ONGLET 1 : COTES ---
     with onglet_cotes:
         cible_cotes = st.selectbox("Pour quelle course ajouter des cotes ?", NOM_COURSES)
-        texte_brut_cotes = st.text_area("Texte Winamax (Cotes)", height=250)
+        st.info("Colle ton texte Winamax OU Unibet. L'application les lira sans problème.")
+        texte_brut_cotes = st.text_area("Texte des cotes", height=250)
         
         if st.button(f"Enregistrer les cotes pour {cible_cotes}"):
             lignes = [ligne.strip() for ligne in texte_brut_cotes.split('\n') if ligne.strip()]
             dico_cotes = {}
             cotes_trouvees = 0
-            for i in range(len(lignes) - 1):
-                nom_potentiel = lignes[i]
-                cote_potentielle = lignes[i+1]
-                if nom_potentiel.startswith("Étape") or nom_potentiel.endswith("%") or re.match(r'^[0-9]+[.,]?[0-9]*$', nom_potentiel): continue
-                if re.match(r'^[0-9]+([.,][0-9]+)?$', cote_potentielle):
-                    cote_float = float(cote_potentielle.replace(',', '.'))
-                    nom_propre = f"{nom_potentiel.split(',')[1].strip()} {nom_potentiel.split(',')[0].strip()}" if "," in nom_potentiel else nom_potentiel
+            
+            i = 0
+            while i < len(lignes):
+                ligne = lignes[i]
+                
+                if ligne.startswith("Étape") or ligne.endswith("%") or ligne.lower() == "cote":
+                    i += 1
+                    continue
+                    
+                match_inline = re.search(r'^(.*?)(?:[\|\-\:]|\s+)(?:Cotes?\s*:?\s*)?([0-9]+(?:[.,][0-9]+)?)$', ligne, re.IGNORECASE)
+                
+                if match_inline and not re.match(r'^[0-9.,\s]+$', match_inline.group(1)):
+                    nom_propre = match_inline.group(1).strip()
+                    cote_float = float(match_inline.group(2).replace(',', '.'))
                     nom_trouve = trouver_vrai_nom(nom_propre, COUREURS)
                     dico_cotes[nom_trouve] = cote_float
                     cotes_trouvees += 1
+                    i += 1
+                    continue
+                    
+                if i < len(lignes) - 1:
+                    nom_potentiel = lignes[i]
+                    cote_potentielle = lignes[i+1]
+                    if re.match(r'^[0-9]+(?:[.,][0-9]+)?$', cote_potentielle):
+                        if "," in nom_potentiel:
+                            parts = nom_potentiel.split(',')
+                            nom_propre = f"{parts[1].strip()} {parts[0].strip()}"
+                        else:
+                            nom_propre = nom_potentiel
+                            
+                        nom_trouve = trouver_vrai_nom(nom_propre, COUREURS)
+                        cote_float = float(cote_potentielle.replace(',', '.'))
+                        dico_cotes[nom_trouve] = cote_float
+                        cotes_trouvees += 1
+                        i += 2 
+                        continue
+                        
+                i += 1
             
             if cotes_trouvees > 0:
                 toutes_les_cotes = charger_json(FICHIER_COTES, {})
                 toutes_les_cotes[cible_cotes] = dico_cotes
                 sauvegarder_json(FICHIER_COTES, toutes_les_cotes)
                 st.success(f"✅ {cotes_trouvees} cotes enregistrées !")
-            else: st.warning("Aucune cote trouvée.")
+                
+                st.write("### 📊 Récapitulatif (Vérifie les correspondances) :")
+                cotes_triees = sorted(dico_cotes.items(), key=lambda x: x[1])
+                for nom, cote in cotes_triees:
+                    st.write(f"- **{formater_nom_affichage(nom)}** | Cote: {cote}")
+            else: 
+                st.warning("Aucune cote trouvée. Vérifie ton texte.")
 
     # --- ONGLET 2 : RÉSULTATS ET POINTS ---
     with onglet_resultats:
-        st.info("Règle : 1x la cote si présent dans le Top 6 | 2x la cote si place exacte. Relancer le calcul écrase l'ancien score.")
+        st.info("Règle : 1x la cote si présent dans le Top 6 | 2x la cote si place exacte.")
         cible_resultats = st.selectbox("Pour quelle course calculer les points ?", NOM_COURSES, key="cible_res")
         
-        # NOUVEAUTÉ : Option de Recalcul rapide
         tous_les_resultats = charger_json(FICHIER_RESULTATS, {})
         top6_existant = tous_les_resultats.get(cible_resultats, [])
         
         if top6_existant:
             st.success(f"📌 Un Top 6 officiel est déjà enregistré pour cette étape.")
             with st.expander("Voir le Top 6 enregistré"):
-                st.write(top6_existant)
+                for idx, coureur in enumerate(top6_existant, 1):
+                    st.write(f"**{idx}.** {formater_nom_affichage(coureur)}")
                 
             if st.button(f"🔄 Recalculer les points de {cible_resultats}", use_container_width=True):
+                debug_log = [f"--- DÉBOGAGE : RECALCUL POUR {cible_resultats} ---"]
+                debug_log.append(f"Top 6 officiel en mémoire : {top6_existant}")
                 toutes_les_cotes = charger_json(FICHIER_COTES, {})
                 cotes_du_jour = toutes_les_cotes.get(cible_resultats, {})
+                
                 tous_les_pronos = charger_json(FICHIER_PRONOS, {})
                 tous_les_points = charger_json(FICHIER_POINTS, {})
-                
                 bilan_etape = {}
 
                 for joueur, pronos_joueur in tous_les_pronos.items():
                     prono_etape = pronos_joueur.get(cible_resultats, [])
                     points_joueur = 0.0
+                    debug_log.append(f"\n--- JOUEUR : {joueur} ---")
+                    debug_log.append(f"Prono complet : {prono_etape}")
                     
                     for index_joueur, coureur in enumerate(prono_etape):
                         if coureur == "--- Sélectionner un coureur ---": continue
                         
-                        if coureur in top6_existant:
-                            cote = cotes_du_jour.get(coureur, 0.0)
-                            index_officiel = top6_existant.index(coureur)
+                        debug_log.append(f"  -> Analyse du pari : {coureur} (Position pariée : {index_joueur+1})")
+                        
+                        # VÉRIFICATION INTELLIGENTE DES NOMS SANS BRIDAGE
+                        match_trouve = False
+                        index_officiel = -1
+                        for idx_off, c_off in enumerate(top6_existant):
+                            if sont_le_meme_coureur(coureur, c_off):
+                                match_trouve = True
+                                index_officiel = idx_off
+                                break
+                                
+                        if match_trouve:
+                            cote = obtenir_cote(coureur, cotes_du_jour)
+                            c_off_nom = top6_existant[index_officiel]
+                            debug_log.append(f"     ✅ MATCH : Correspond au coureur officiel **{formater_nom_affichage(c_off_nom)}** ({index_officiel+1}ème). Cote détectée = {cote}")
                             
                             if index_joueur == index_officiel:
                                 points_joueur += (cote * 2)
+                                debug_log.append(f"     🎯 PLACE EXACTE ! Gain = {cote} x 2 = {cote*2}")
                             else:
                                 points_joueur += cote
+                                debug_log.append(f"     ⚠️ MAUVAISE PLACE. Gain = {cote}")
+                        else:
+                            debug_log.append(f"     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0")
                                 
                     if joueur not in tous_les_points:
                         tous_les_points[joueur] = {}
                     tous_les_points[joueur][cible_resultats] = round(points_joueur, 2)
                     bilan_etape[joueur] = round(points_joueur, 2)
+                    debug_log.append(f"  TOTAL POUR {joueur} : {points_joueur}")
                 
                 sauvegarder_json(FICHIER_POINTS, tous_les_points)
+                with open("debug_calcul.txt", "w", encoding="utf-8") as f:
+                    f.write("\n".join(debug_log))
+                
                 st.balloons()
                 st.write("### 💰 Nouveau Bilan de l'étape :")
                 st.json(bilan_etape)
+                with st.expander("🛠️ Voir le journal de débogage détaillé"):
+                    st.code("\n".join(debug_log), language="markdown")
                 
         st.divider()
         st.write("### 🏁 Saisir un NOUVEAU classement")
@@ -211,6 +304,8 @@ def espace_admin():
         texte_brut_resultats = st.text_area("Classement PCS", height=250)
         
         if st.button(f"Clôturer et distribuer les points pour {cible_resultats}"):
+            debug_log = [f"--- DÉBOGAGE : CLÔTURE POUR {cible_resultats} ---"]
+            
             texte_propre = texte_brut_resultats.replace('\xa0', ' ')
             lignes_res = [ligne.strip() for ligne in texte_propre.split('\n') if ligne.strip()]
             top6_officiel = []
@@ -221,12 +316,14 @@ def espace_admin():
                     nom_nettoye = nom_nettoye.split('\t')[0].strip()
                     nom_trouve = trouver_vrai_nom(nom_nettoye, COUREURS)
                     
-                    if nom_trouve in COUREURS and nom_trouve != "--- Sélectionner un coureur ---":
+                    if nom_trouve and nom_trouve != "--- Sélectionner un coureur ---":
                         if nom_trouve not in top6_officiel:
                             top6_officiel.append(nom_trouve)
                 
                 if len(top6_officiel) == 6: 
                     break
+            
+            debug_log.append(f"Top 6 officiel enregistré par l'admin : {top6_officiel}")
             
             if len(top6_officiel) == 0:
                 st.error("⚠️ Aucun coureur reconnu. Vérifie ton texte.")
@@ -236,11 +333,16 @@ def espace_admin():
                 else:
                     st.success("✅ Top 6 officiel validé ! Calcul des points en cours...")
                 
+                st.write("### Classement retenu :")
+                for idx, c in enumerate(top6_officiel, 1):
+                    st.write(f"**{idx}.** {formater_nom_affichage(c)}")
+                
                 tous_les_resultats[cible_resultats] = top6_officiel
                 sauvegarder_json(FICHIER_RESULTATS, tous_les_resultats)
                 
                 toutes_les_cotes = charger_json(FICHIER_COTES, {})
                 cotes_du_jour = toutes_les_cotes.get(cible_resultats, {})
+                
                 tous_les_pronos = charger_json(FICHIER_PRONOS, {})
                 tous_les_points = charger_json(FICHIER_POINTS, {})
                 
@@ -249,28 +351,52 @@ def espace_admin():
                 for joueur, pronos_joueur in tous_les_pronos.items():
                     prono_etape = pronos_joueur.get(cible_resultats, [])
                     points_joueur = 0.0
+                    debug_log.append(f"\n--- JOUEUR : {joueur} ---")
+                    debug_log.append(f"Prono complet : {prono_etape}")
                     
                     for index_joueur, coureur in enumerate(prono_etape):
                         if coureur == "--- Sélectionner un coureur ---": continue
                         
-                        if coureur in top6_officiel:
-                            cote = cotes_du_jour.get(coureur, 0.0)
-                            index_officiel = top6_officiel.index(coureur)
+                        debug_log.append(f"  -> Analyse du pari : {coureur} (Position pariée : {index_joueur+1})")
+                        
+                        # APPLICATION DE LA COMPARAISON INTELLIGENTE SANS FILTRE STRICT
+                        match_trouve = False
+                        index_officiel = -1
+                        for idx_off, c_off in enumerate(top6_officiel):
+                            if sont_le_meme_coureur(coureur, c_off):
+                                match_trouve = True
+                                index_officiel = idx_off
+                                break
+                                
+                        if match_trouve:
+                            cote = obtenir_cote(coureur, cotes_du_jour)
+                            c_off_nom = top6_officiel[index_officiel]
+                            debug_log.append(f"     ✅ MATCH : Correspond au coureur officiel **{formater_nom_affichage(c_off_nom)}** ({index_officiel+1}ème). Cote détectée = {cote}")
                             
                             if index_joueur == index_officiel:
                                 points_joueur += (cote * 2)
+                                debug_log.append(f"     🎯 PLACE EXACTE ! Gain = {cote} x 2 = {cote*2}")
                             else:
                                 points_joueur += cote
+                                debug_log.append(f"     ⚠️ MAUVAISE PLACE. Gain = {cote}")
+                        else:
+                            debug_log.append(f"     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0")
                                 
                     if joueur not in tous_les_points:
                         tous_les_points[joueur] = {}
                     tous_les_points[joueur][cible_resultats] = round(points_joueur, 2)
                     bilan_etape[joueur] = round(points_joueur, 2)
+                    debug_log.append(f"  TOTAL POUR {joueur} : {points_joueur}")
                 
                 sauvegarder_json(FICHIER_POINTS, tous_les_points)
+                with open("debug_calcul.txt", "w", encoding="utf-8") as f:
+                    f.write("\n".join(debug_log))
+                    
                 st.balloons()
                 st.write("### 💰 Bilan de l'étape :")
                 st.json(bilan_etape)
+                with st.expander("🛠️ Voir le journal de débogage détaillé"):
+                    st.code("\n".join(debug_log), language="markdown")
 
     # --- ONGLET 3 : JOUEURS ---
     with onglet_joueurs:
@@ -356,7 +482,8 @@ def espace_admin():
 
             if prono_existant:
                 st.info("Prono actuel trouvé pour ce joueur :")
-                st.write(prono_existant)
+                for i, c in enumerate(prono_existant, 1):
+                    st.write(f"**{i}.** {formater_nom_affichage(c)}")
                 if st.button("🗑️ Supprimer définitivement ce pronostic", use_container_width=True):
                     del tous_les_pronos[joueur_prono][etape_prono]
                     sauvegarder_json(FICHIER_PRONOS, tous_les_pronos)
@@ -458,7 +585,7 @@ def main_app():
                 col_res, col_pts = st.columns(2)
                 with col_res:
                     st.subheader("Classement Officiel")
-                    df_off = pd.DataFrame({"Coureur": top6_off})
+                    df_off = pd.DataFrame({"Coureur": [formater_nom_affichage(c) for c in top6_off]})
                     df_off.index = range(1, len(top6_off) + 1)
                     st.dataframe(df_off, use_container_width=True)
                     
@@ -477,7 +604,7 @@ def main_app():
             for j, pronos_j in tous_les_pronos.items():
                 prono_list = pronos_j.get(course_choisie, [])
                 if len(prono_list) == 6:
-                    df_pronos[j] = prono_list
+                    df_pronos[j] = [formater_nom_affichage(c) for c in prono_list]
             if df_pronos:
                 df_all_bets = pd.DataFrame(df_pronos)
                 df_all_bets.index = range(1, 7)
@@ -511,7 +638,8 @@ def main_app():
 
         for c in coureurs_tries:
             cote = cotes_du_jour.get(c)
-            texte = f"{c} | Cote: {cote}" if cote else c 
+            nom_propre = formater_nom_affichage(c)
+            texte = f"{nom_propre} | Cote: {cote}" if cote else nom_propre 
             options_formatees.append(texte)
             mapping_inverse[texte] = c
 

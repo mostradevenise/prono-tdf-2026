@@ -1,0 +1,20 @@
+--- DÉBOGAGE : CLÔTURE POUR Étape Test ---
+Top 6 officiel enregistré par l'admin : ['POGAČAR Tadej', 'MARTINEZ Lenny', 'Lemmen Bart', 'Widar Jarno', 'Riccitello Matthew', 'Mas Enric']
+
+--- JOUEUR : Frédo ---
+Prono complet : ['Tadej Pogačar', 'MARTINEZ Lenny', 'Katarzyna Niewiadoma', 'Pauline Ferrand-Prévot', 'Wout van Aert', 'VERMEERSCH Florian']
+  -> Analyse du pari : Tadej Pogačar (Position pariée : 1)
+     ✅ MATCH : Correspond au coureur officiel **POGAČAR Tadej** (1ème). Cote détectée = 1.28
+     🎯 PLACE EXACTE ! Gain = 1.28 x 2 = 2.56
+  -> Analyse du pari : MARTINEZ Lenny (Position pariée : 2)
+     ✅ MATCH : Correspond au coureur officiel **MARTINEZ Lenny** (2ème). Cote détectée = 250.0
+     🎯 PLACE EXACTE ! Gain = 250.0 x 2 = 500.0
+  -> Analyse du pari : Katarzyna Niewiadoma (Position pariée : 3)
+     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0
+  -> Analyse du pari : Pauline Ferrand-Prévot (Position pariée : 4)
+     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0
+  -> Analyse du pari : Wout van Aert (Position pariée : 5)
+     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0
+  -> Analyse du pari : VERMEERSCH Florian (Position pariée : 6)
+     ❌ PAS DE MATCH : Absent du Top 6 officiel. Gain = 0
+  TOTAL POUR Frédo : 502.56
