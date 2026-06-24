@@ -11,6 +11,30 @@
             "MARTÍNEZ Daniel Felipe",
             "CARAPAZ Richard",
             "KUSS Sepp"
+        ],
+        "Étape 1": [
+            "MERLIER Tim",
+            "POGAČAR Tadej",
+            "CARAPAZ Richard",
+            "VAUQUELIN Kévin",
+            "Demi Vollering",
+            "GROVES Kaden",
+            "RICKAERT Jonas",
+            "HOOLE Daan",
+            "GAUDU David",
+            "CICCONE Giulio"
+        ],
+        "Étape Test": [
+            "POGAČAR Tadej",
+            "CARAPAZ Richard",
+            "VERMEERSCH Florian",
+            "VERSTRYNGE Emiel",
+            "Demi Vollering",
+            "ARENSMAN Thymen",
+            "HERMANS Quinten",
+            "GAUDU David",
+            "MARTIN Guillaume",
+            "GANNA Filippo"
         ]
     }
 }
